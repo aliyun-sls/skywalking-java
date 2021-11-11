@@ -49,6 +49,10 @@ public abstract class DistributedTraceId {
         return id.encode();
     }
 
+    public String encodeWithoutDot() {
+        return id.encodeWithoutDot();
+    }
+
     @Override
     public String toString() {
         return id.toString();

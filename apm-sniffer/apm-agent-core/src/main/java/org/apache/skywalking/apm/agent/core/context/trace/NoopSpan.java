@@ -101,6 +101,10 @@ public class NoopSpan implements AbstractSpan {
         return "";
     }
 
+    @Override public long getStart() {
+        return 0;
+    }
+
     @Override public AbstractSpan setOperationId(int operationId) {
         return this;
     }

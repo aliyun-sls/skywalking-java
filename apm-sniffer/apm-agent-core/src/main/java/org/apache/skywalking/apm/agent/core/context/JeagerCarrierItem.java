@@ -16,20 +16,20 @@
  *
  */
 
+package org.apache.skywalking.apm.agent.core.context;
 
-package org.apache.skywalking.apm.agent.core.context.ids;
+public class JeagerCarrierItem extends CarrierItem {
 
-/**
- * The <code>PropagatedTraceId</code> represents a {@link DistributedTraceId}, which is propagated from the peer.
- *
- * @author wusheng
- */
-public class PropagatedTraceId extends DistributedTraceId {
-    public PropagatedTraceId(String id) {
-        super(id);
+    public static final String HEADER_NAME = "uber-trace-id";
+    private ContextCarrier carrier;
+
+    public JeagerCarrierItem(ContextCarrier carrier, CarrierItem next) {
+        super(HEADER_NAME, carrier.serialize(ContextCarrier.HeaderVersion.JAEGER), next);
+        this.carrier = carrier;
     }
 
-    public PropagatedTraceId(ID id) {
-        super(id);
+    @Override
+    public void setHeadValue(String headValue) {
+        carrier.deserialize(headValue, ContextCarrier.HeaderVersion.JAEGER);
     }
 }

@@ -234,6 +234,10 @@ public abstract class AbstractTracingSpan implements AbstractSpan {
         return operationName;
     }
 
+    @Override public long getStart() {
+        return startTime;
+    }
+
     @Override
     public AbstractTracingSpan setLayer(SpanLayer layer) {
         this.layer = layer;

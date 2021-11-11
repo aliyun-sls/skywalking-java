@@ -123,6 +123,7 @@ public class TracingContext implements AbstractTracerContext {
 
         carrier.setTraceSegmentId(this.segment.getTraceSegmentId());
         carrier.setSpanId(span.getSpanId());
+        carrier.setParentSpan(span);
 
         carrier.setParentServiceInstanceId(segment.getApplicationInstanceId());
 

@@ -19,12 +19,14 @@
 package org.apache.skywalking.apm.agent.core.context;
 
 import java.io.Serializable;
+import java.math.BigInteger;
 import java.util.List;
 import org.apache.skywalking.apm.agent.core.base64.Base64;
 import org.apache.skywalking.apm.agent.core.conf.Config;
 import org.apache.skywalking.apm.agent.core.context.ids.DistributedTraceId;
 import org.apache.skywalking.apm.agent.core.context.ids.ID;
 import org.apache.skywalking.apm.agent.core.context.ids.PropagatedTraceId;
+import org.apache.skywalking.apm.agent.core.context.trace.AbstractSpan;
 import org.apache.skywalking.apm.agent.core.context.trace.TraceSegment;
 import org.apache.skywalking.apm.agent.core.dictionary.DictionaryUtil;
 import org.apache.skywalking.apm.util.StringUtil;
@@ -75,11 +77,12 @@ public class ContextCarrier implements Serializable {
      * {@link DistributedTraceId}, also known as TraceId
      */
     private DistributedTraceId primaryDistributedTraceId;
+    private AbstractSpan span;
 
     public CarrierItem items() {
         CarrierItemHead head;
         if (Config.Agent.ACTIVE_V2_HEADER && Config.Agent.ACTIVE_V1_HEADER) {
-            SW3CarrierItem  carrierItem = new SW3CarrierItem(this, null);
+            SW3CarrierItem carrierItem = new SW3CarrierItem(this, null);
             SW6CarrierItem sw6CarrierItem = new SW6CarrierItem(this, carrierItem);
             head = new CarrierItemHead(sw6CarrierItem);
         } else if (Config.Agent.ACTIVE_V2_HEADER) {
@@ -87,6 +90,9 @@ public class ContextCarrier implements Serializable {
             head = new CarrierItemHead(sw6CarrierItem);
         } else if (Config.Agent.ACTIVE_V1_HEADER) {
             SW3CarrierItem carrierItem = new SW3CarrierItem(this, null);
+            head = new CarrierItemHead(carrierItem);
+        } else if (Config.Agent.ACTIVE_JEAGER_HEADER) {
+            JeagerCarrierItem carrierItem = new JeagerCarrierItem(this, null);
             head = new CarrierItemHead(carrierItem);
         } else {
             throw new IllegalArgumentException("At least active v1 or v2 header.");
@@ -115,21 +121,24 @@ public class ContextCarrier implements Serializable {
                 } else {
                     return "";
                 }
+            } else if (Config.Agent.ACTIVE_V2_HEADER) {
+                return StringUtil.join('-',
+                    "1",
+                    Base64.encode(this.getPrimaryDistributedTraceId().encode()),
+                    Base64.encode(this.getTraceSegmentId().encode()),
+                    this.getSpanId() + "",
+                    this.getParentServiceInstanceId() + "",
+                    this.getEntryServiceInstanceId() + "",
+                    Base64.encode(this.getPeerHost()),
+                    Base64.encode(this.getEntryEndpointName()),
+                    Base64.encode(this.getParentEndpointName()));
+            } else if (Config.Agent.ACTIVE_JEAGER_HEADER) {
+                String traceId = this.getPrimaryDistributedTraceId().encodeWithoutDot();
+                String parentSpanId = this.getTraceSegmentId().encodeWithoutDot().substring(traceId.length() - 12)
+                    + String.format("%04x", this.getSpanId()).substring(0, 4);
+                return StringUtil.join(':', traceId, parentSpanId, parentSpanId, 1 + "");
             } else {
-                if (Config.Agent.ACTIVE_V2_HEADER) {
-                    return StringUtil.join('-',
-                        "1",
-                        Base64.encode(this.getPrimaryDistributedTraceId().encode()),
-                        Base64.encode(this.getTraceSegmentId().encode()),
-                        this.getSpanId() + "",
-                        this.getParentServiceInstanceId() + "",
-                        this.getEntryServiceInstanceId() + "",
-                        Base64.encode(this.getPeerHost()),
-                        Base64.encode(this.getEntryEndpointName()),
-                        Base64.encode(this.getParentEndpointName()));
-                } else {
-                    return "";
-                }
+                return "";
             }
         } else {
             return "";
@@ -144,7 +153,7 @@ public class ContextCarrier implements Serializable {
     ContextCarrier deserialize(String text, HeaderVersion version) {
         if (text != null) {
             // if this carrier is initialized by v1 or v2, don't do deserialize again for performance.
-            if (this.isValid(HeaderVersion.v1) || this.isValid(HeaderVersion.v2)) {
+            if (this.isValid(HeaderVersion.v1) || this.isValid(HeaderVersion.v2) || this.isValid(HeaderVersion.JAEGER)) {
                 return this;
             }
             if (HeaderVersion.v1.equals(version)) {
@@ -180,6 +189,29 @@ public class ContextCarrier implements Serializable {
 
                     }
                 }
+            } else if (HeaderVersion.JAEGER.equals(version)) {
+                String[] parts = text.split(":", 5);
+                if (parts.length == 4) {
+                    try {
+                        String traceId = parts[0];
+                        ID traceID;
+                        if (traceId.length() == 16) {
+                            traceID = new ID(new BigInteger(traceId, 16).longValue());
+                        } else {
+                            traceID = new ID(new BigInteger(traceId.substring(0, 16), 16).longValue(), new BigInteger(traceId.substring(16), 16).longValue());
+                        }
+
+                        this.primaryDistributedTraceId = new PropagatedTraceId(traceID);
+                        // PlaceHolder
+                        this.traceSegmentId = traceID;
+                        //
+                        this.parentServiceInstanceId = new BigInteger(parts[1].substring(0, 8), 16).intValue();
+                        this.peerHost = "#Unknown";
+                        this.spanId =  new BigInteger(parts[1].substring(8), 16).intValue();
+                    } catch (Exception e) {
+
+                    }
+                }
             } else {
                 throw new IllegalArgumentException("Unimplemented header version." + version);
             }
@@ -188,7 +220,7 @@ public class ContextCarrier implements Serializable {
     }
 
     public boolean isValid() {
-        return isValid(HeaderVersion.v2) || isValid(HeaderVersion.v1);
+        return isValid(HeaderVersion.v2) || isValid(HeaderVersion.v1) || isValid(HeaderVersion.JAEGER);
     }
 
     /**
@@ -215,6 +247,8 @@ public class ContextCarrier implements Serializable {
                 && entryServiceInstanceId != DictionaryUtil.nullValue()
                 && !StringUtil.isEmpty(peerHost)
                 && primaryDistributedTraceId != null;
+        } else if (HeaderVersion.JAEGER.equals(version)) {
+            return primaryDistributedTraceId != null && parentServiceInstanceId != DictionaryUtil.nullValue();
         } else {
             throw new IllegalArgumentException("Unimplemented header version." + version);
         }
@@ -300,7 +334,11 @@ public class ContextCarrier implements Serializable {
         this.entryServiceInstanceId = entryServiceInstanceId;
     }
 
+    public void setParentSpan(AbstractSpan span) {
+        this.span = span;
+    }
+
     public enum HeaderVersion {
-        v1, v2
+        v1, v2, JAEGER
     }
 }

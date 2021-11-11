@@ -118,6 +118,8 @@ public interface AbstractSpan extends AsyncSpan {
 
     String getOperationName();
 
+    long getStart();
+
     AbstractSpan setOperationId(int operationId);
 
     /**

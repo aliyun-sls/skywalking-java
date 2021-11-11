@@ -86,6 +86,11 @@ public class Config {
         public static boolean ACTIVE_V1_HEADER = false;
 
         /**
+         * Active Jaeger header
+         */
+        public static boolean ACTIVE_JEAGER_HEADER = false;
+
+        /**
          * The identify of the instance
          */
         public static String INSTANCE_UUID = "";
@@ -118,6 +123,10 @@ public class Config {
          * Limit the length of the operationName to prevent errors when inserting elasticsearch
          **/
         public static int OPERATION_NAME_THRESHOLD = 500;
+    }
+
+    public static class Propagator {
+        public static String PROPAGATOR = "sw,jaeger,w3c";
     }
 
     public static class Collector {

@@ -19,14 +19,16 @@
 
 package org.apache.skywalking.apm.agent.core.context.ids;
 
-import org.apache.skywalking.apm.network.language.agent.*;
+import org.apache.skywalking.apm.agent.core.conf.Config;
+import org.apache.skywalking.apm.network.language.agent.UniqueId;
+
 /**
  * @author wusheng
  */
 public class ID {
     private long part1;
-    private long part2;
-    private long part3;
+    private Long part2;
+    private Long part3;
     private String encoding;
     private boolean isValid;
 
@@ -34,6 +36,19 @@ public class ID {
         this.part1 = part1;
         this.part2 = part2;
         this.part3 = part3;
+        this.encoding = null;
+        this.isValid = true;
+    }
+
+    public ID(long part1) {
+        this.part1 = part1;
+        this.encoding = null;
+        this.isValid = true;
+    }
+
+    public ID(long part1, Long parts2) {
+        this.part1 = part1;
+        this.part2 = parts2;
         this.encoding = null;
         this.isValid = true;
     }
@@ -65,6 +80,14 @@ public class ID {
         return encoding;
     }
 
+    public String encodeWithoutDot() {
+        StringBuilder result = new StringBuilder(String.format("%016x", this.part1));
+        if (this.part2 != null) {
+            result.append(String.format("%016x", this.part2));
+        }
+        return result.toString();
+    }
+
     @Override public String toString() {
         return part1 + "." + part2 + '.' + part3;
     }
@@ -79,8 +102,18 @@ public class ID {
 
         if (part1 != id.part1)
             return false;
+
+        if (part2 == null && id.part2 == null) {
+            return true;
+        }
+
         if (part2 != id.part2)
             return false;
+
+        if (part3 == null && id.part3 == null) {
+            return true;
+        }
+
         return part3 == id.part3;
     }
 
@@ -96,6 +129,14 @@ public class ID {
     }
 
     public UniqueId transform() {
+        if (Config.Agent.ACTIVE_JEAGER_HEADER) {
+            UniqueId.Builder builder = UniqueId.newBuilder().addIdParts(648495579).addIdParts(part1);
+            if (this.part2 != null) {
+                builder.addIdParts(this.part2);
+            }
+            return builder.build();
+        }
+
         return UniqueId.newBuilder().addIdParts(part1).addIdParts(part2).addIdParts(part3).build();
     }
 }
