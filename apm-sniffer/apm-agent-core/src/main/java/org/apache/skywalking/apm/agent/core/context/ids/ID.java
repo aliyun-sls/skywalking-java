@@ -89,6 +89,9 @@ public class ID {
     }
 
     @Override public String toString() {
+        if (Config.Agent.ACTIVE_JEAGER_HEADER) {
+            return this.encodeWithoutDot();
+        }
         return part1 + "." + part2 + '.' + part3;
     }
 
